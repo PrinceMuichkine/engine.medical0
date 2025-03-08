@@ -1,166 +1,266 @@
-import os
-import base64
-import traceback
-from io import BytesIO
+#!/usr/bin/env python3
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import base64
+from io import BytesIO
 from PIL import Image
+import os
+import sys
+import json
+import traceback
+import argparse
 
-# Import the HealthGPT agent from the existing code
-from model import HealthGPT_Agent
-from config import HealthGPTConfig_M3_COM, HealthGPTConfig_M3_GEN, HealthGPTConfig_L14_COM
+# Add the current directory to the path to access llava modules
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
 
-# Initialize Flask app
+# Import the necessary modules
+try:
+    import torch
+    # Check what demo scripts are available
+    demo_dir = os.path.join(current_dir, "llava", "demo")
+    com_script_path = os.path.join(demo_dir, "com_infer.py")
+    gen_script_path = os.path.join(demo_dir, "gen_infer.py")
+    
+    # If the files don't exist, adjust paths for phi4 versions
+    if not os.path.exists(com_script_path):
+        com_script_path = os.path.join(demo_dir, "com_infer_phi4.py")
+    if not os.path.exists(gen_script_path):
+        gen_script_path = os.path.join(demo_dir, "gen_infer_phi4.py")
+        
+    print(f"Found comprehension script: {com_script_path}")
+    print(f"Found generation script: {gen_script_path}")
+except ImportError as e:
+    print(f"Error importing required modules: {e}")
+    sys.exit(1)
+
 app = Flask(__name__)
-CORS(app)  # Enable CORS for cross-origin requests
+CORS(app)
 
 # Define model configurations
 configs = {
-    "HealthGPT-M3-COM": HealthGPTConfig_M3_COM(),
-    "HealthGPT-M3-GEN": HealthGPTConfig_M3_GEN(),
-    "HealthGPT-L14-COM": HealthGPTConfig_L14_COM()
+    "HealthGPT-M3": {
+        "model_name_or_path": "./Phi-3-mini-4k-instruct",
+        "dtype": "FP16",
+        "hlora_r": 64,
+        "hlora_alpha": 128,
+        "hlora_nums": 4,
+        "vq_idx_nums": 8192,
+        "instruct_template": "phi3_instruct",
+        "vit_path": "./clip-vit-large-patch14-336",
+        "hlora_path": "./HealthGPT-M3/com_hlora_weights.bin",
+        "fusion_layer_path": "./HealthGPT-M3/fusion_layer_weights.bin"
+    },
+    "HealthGPT-M3-Gen": {
+        "model_name_or_path": "./Phi-3-mini-4k-instruct",
+        "dtype": "FP16", 
+        "hlora_r": 256,
+        "hlora_alpha": 512,
+        "hlora_nums": 4,
+        "vq_idx_nums": 8192,
+        "instruct_template": "phi3_instruct",
+        "vit_path": "./clip-vit-large-patch14-336",
+        "hlora_path": "./HealthGPT-M3/gen_hlora_weights.bin", 
+        "fusion_layer_path": "./HealthGPT-M3/fusion_layer_weights.bin"
+    }
 }
 
-# Initialize HealthGPT agent
-# The agent is initialized without loading a specific model
-# Models will be loaded on-demand when processing requests
-agent = HealthGPT_Agent(configs=configs, model_name=None)
+def base64_to_image(base64_string):
+    """Convert base64 string to PIL Image."""
+    if "base64," in base64_string:
+        base64_string = base64_string.split("base64,")[1]
+    image_data = base64.b64decode(base64_string)
+    return Image.open(BytesIO(image_data))
 
 def image_to_base64(image):
-    """
-    Convert PIL Image to base64 string
-    """
+    """Convert PIL Image to base64 string."""
     buffered = BytesIO()
     image.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-def base64_to_image(base64_string):
-    """
-    Convert base64 string to PIL Image
-    """
-    if base64_string.startswith('data:image'):
-        # Remove the data URL scheme if present
-        base64_string = base64_string.split(',')[1]
-    image_data = base64.b64decode(base64_string)
-    return Image.open(BytesIO(image_data))
+def run_script(script_path, args_dict):
+    """Run a Python script with the provided arguments"""
+    import subprocess
+    
+    # Convert dictionary to command-line arguments
+    cmd_args = [sys.executable, script_path]
+    for key, value in args_dict.items():
+        if value is not None:
+            cmd_args.append(f"--{key}")
+            cmd_args.append(str(value))
+    
+    print(f"Running command: {' '.join(cmd_args)}")
+    
+    # Run the script and capture output
+    process = subprocess.Popen(
+        cmd_args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True
+    )
+    stdout, stderr = process.communicate()
+    
+    if process.returncode != 0:
+        print(f"Error running script: {stderr}")
+        raise Exception(f"Script execution failed: {stderr}")
+    
+    return stdout
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """
-    Health check endpoint
-    """
+    """Check if the API is running."""
     return jsonify({
         "status": "healthy",
-        "message": "HealthGPT API is running",
-        "models": list(configs.keys())
+        "gpu": torch.cuda.is_available(),
+        "cuda_version": torch.version.cuda if torch.cuda.is_available() else "N/A"
     })
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_image():
-    """
-    Endpoint for medical image analysis
-    Processes an image and a question, returning a text analysis
-    """
+    """Analyze an image using the comprehension model."""
     try:
+        # Get data from request
         data = request.json
-        question = data.get('question', '')
-        image_base64 = data.get('image', None)
-        model = data.get('model', 'HealthGPT-M3')
+        image_base64 = data.get('image', '')
+        prompt = data.get('prompt', '')
+        model_type = data.get('model', 'HealthGPT-M3')
         
-        if not question:
-            return jsonify({"error": "Question is required"}), 400
-            
+        # Basic validation
         if not image_base64:
-            return jsonify({"error": "Image is required"}), 400
-
-        # Convert base64 to PIL Image
+            return jsonify({"status": "error", "message": "No image provided"})
+        
+        # Convert base64 to image and save to temp file
         image = base64_to_image(image_base64)
+        temp_img_path = os.path.join(current_dir, "temp_input_image.jpg")
+        image.save(temp_img_path)
         
-        # Select appropriate model
-        if model.upper() not in ["HEALTHGPT-M3", "HEALTHGPT-L14"]:
-            return jsonify({"error": f"Invalid model: {model}. Available models: HealthGPT-M3, HealthGPT-L14"}), 400
-            
-        model_name = f"{model}-COM"
+        # Get model config
+        if model_type not in configs:
+            return jsonify({"status": "error", "message": f"Model {model_type} not found"})
+        model_config = configs[model_type]
         
-        # Load the model (this will reuse if already loaded)
-        agent.load_model(model_name=model_name)
+        # Prepare script arguments
+        script_args = {
+            "model_name_or_path": model_config["model_name_or_path"],
+            "dtype": model_config["dtype"],
+            "hlora_r": model_config["hlora_r"],
+            "hlora_alpha": model_config["hlora_alpha"],
+            "hlora_nums": model_config["hlora_nums"],
+            "vq_idx_nums": model_config["vq_idx_nums"],
+            "instruct_template": model_config["instruct_template"],
+            "vit_path": model_config["vit_path"],
+            "hlora_path": model_config["hlora_path"],
+            "fusion_layer_path": model_config["fusion_layer_path"],
+            "question": prompt,
+            "img_path": temp_img_path
+        }
         
-        # Process the request
-        response = agent.process("Analyze Image", question, image)
+        # Run the comprehension script
+        output = run_script(com_script_path, script_args)
         
+        # Extract the response from the output
+        response = ""
+        for line in output.splitlines():
+            if line.startswith("HealthGPT:"):
+                response = line.replace("HealthGPT:", "").strip()
+                break
+        
+        # Clean up temp file
+        if os.path.exists(temp_img_path):
+            os.remove(temp_img_path)
+        
+        # Return the result
         return jsonify({
-            "answer": response,
-            "type": "text"
+            "result": response,
+            "status": "success"
         })
+    
     except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/api/generate', methods=['POST'])
 def generate_image():
-    """
-    Endpoint for medical image generation
-    Processes a text prompt and optionally a reference image, returning a generated image
-    """
+    """Generate an image using the generation model."""
     try:
+        # Get data from request
         data = request.json
+        image_base64 = data.get('image', '')
         prompt = data.get('prompt', '')
-        reference_image_base64 = data.get('referenceImage', None)
-        model = data.get('model', 'HealthGPT-M3')
         
-        if not prompt:
-            return jsonify({"error": "Prompt is required"}), 400
+        # Basic validation
+        if not image_base64:
+            return jsonify({"status": "error", "message": "No image provided"})
         
-        # Convert base64 to PIL Image if provided
-        reference_image = None
-        if reference_image_base64:
-            reference_image = base64_to_image(reference_image_base64)
+        # Convert base64 to image and save to temp file
+        image = base64_to_image(image_base64)
+        temp_img_path = os.path.join(current_dir, "temp_input_image.jpg")
+        temp_out_path = os.path.join(current_dir, "temp_output_image.jpg")
+        image.save(temp_img_path)
         
-        # Check if model supports generation
-        if model.upper() == "HEALTHGPT-L14":
-            return jsonify({"error": "HealthGPT-L14 does not support image generation"}), 400
+        # Get model config for generation
+        model_config = configs["HealthGPT-M3-Gen"]
+        
+        # Prepare script arguments
+        script_args = {
+            "model_name_or_path": model_config["model_name_or_path"],
+            "dtype": model_config["dtype"],
+            "hlora_r": model_config["hlora_r"],
+            "hlora_alpha": model_config["hlora_alpha"],
+            "hlora_nums": model_config["hlora_nums"],
+            "vq_idx_nums": model_config["vq_idx_nums"],
+            "instruct_template": model_config["instruct_template"],
+            "vit_path": model_config["vit_path"],
+            "hlora_path": model_config["hlora_path"],
+            "fusion_layer_path": model_config["fusion_layer_path"],
+            "question": prompt,
+            "img_path": temp_img_path,
+            "save_path": temp_out_path
+        }
+        
+        # Run the generation script
+        run_script(gen_script_path, script_args)
+        
+        # Read the generated image
+        if os.path.exists(temp_out_path):
+            generated_image = Image.open(temp_out_path)
+            img_base64 = f"data:image/png;base64,{image_to_base64(generated_image)}"
             
-        # Load the generation model
-        model_name = f"{model}-GEN"
-        agent.load_model(model_name=model_name)
+            # Clean up
+            os.remove(temp_out_path)
+        else:
+            return jsonify({"status": "error", "message": "Image generation failed"})
         
-        # Generate the image
-        generated_image = agent.process("Generate Image", prompt, reference_image)
+        # Clean up temp file
+        if os.path.exists(temp_img_path):
+            os.remove(temp_img_path)
         
-        # Convert the generated image to base64
-        generated_image_base64 = image_to_base64(generated_image)
-        
+        # Return the result
         return jsonify({
-            "image": generated_image_base64,
-            "type": "image"
+            "image": img_base64,
+            "status": "success"
         })
+    
     except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/api/models', methods=['GET'])
 def get_models():
-    """
-    Endpoint to list available models and their capabilities
-    """
+    """Get information about available models."""
     return jsonify({
         "models": [
             {
-                "id": "HealthGPT-M3",
-                "name": "HealthGPT M3",
-                "capabilities": ["analyze", "generate"],
-                "description": "Medical vision-language model based on Phi-3-mini"
-            },
-            {
-                "id": "HealthGPT-L14",
-                "name": "HealthGPT L14",
-                "capabilities": ["analyze"],
-                "description": "Advanced medical vision-language model based on Phi-4"
+                "id": "HealthGPT-M3", 
+                "name": "HealthGPT-M3", 
+                "description": "Smaller model optimized for speed"
             }
         ]
     })
 
 if __name__ == '__main__':
-    # Get port from environment variable or use default 5000
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False) 
+    print("Starting HealthGPT API...")
+    print(f"GPU available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+    app.run(host='0.0.0.0', port=5000) 
