@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# Get the image path from command line argument
+# Get the image path and output path from command line arguments
 IMAGE_PATH=${1:-"path/to/default/image.jpg"}
-PROMPT_TYPE=${2:-"general"}
+OUTPUT_PATH=${2:-"output_phi4.jpg"}
+PROMPT_TYPE=${3:-"general"}
 
 # Activate conda environment to ensure all dependencies are available
 if [[ -f "/root/anaconda3/etc/profile.d/conda.sh" ]]; then
@@ -23,8 +24,6 @@ fi
 
 # Set environment variables
 export PYTHONUNBUFFERED=1  # Force Python to print output immediately
-# Add PYTHONPATH to find the llava module
-export PYTHONPATH="$PYTHONPATH:$(realpath $(dirname "$0")/../..)"
 
 # Check README statement about Phi-4 availability
 echo "NOTE: According to the README, the Phi-4 weights are not yet released."
@@ -33,10 +32,12 @@ echo "Falling back to using Phi-3 model and weights instead."
 # Model and weights paths - use Phi-3 directly since Phi-4 weights aren't released
 MODEL_NAME_OR_PATH="microsoft/Phi-3-mini-4k-instruct"
 VIT_PATH="openai/clip-vit-large-patch14-336"  # No trailing slash!
-HLORA_PATH="../../weights/com_hlora_weights.bin"  # Use Phi-3 weights directly
+HLORA_PATH="../../weights/gen_hlora_weights.bin"  # Use Phi-3 weights directly
+FUSION_LAYER_PATH="../../weights/fusion_layer_weights.bin"
 
-echo "======= Starting HealthGPT Analysis ======="
+echo "======= Starting HealthGPT Image Generation ======="
 echo "Using image: $IMAGE_PATH"
+echo "Output path: $OUTPUT_PATH"
 echo "Model: $MODEL_NAME_OR_PATH (fallback from Phi-4)"
 echo "VIT path: $VIT_PATH"
 
@@ -49,6 +50,11 @@ fi
 # Check if weights exist
 if [ ! -f "$HLORA_PATH" ]; then
     echo "ERROR: H-LoRA weights file does not exist: $HLORA_PATH"
+    exit 1
+fi
+
+if [ ! -f "$FUSION_LAYER_PATH" ]; then
+    echo "ERROR: Fusion layer weights file does not exist: $FUSION_LAYER_PATH"
     exit 1
 fi
 
@@ -79,47 +85,26 @@ PROMPT_FILE="../../medical0.tools.txt"
 if [ -f "$PROMPT_FILE" ] && [ "$PROMPT_TYPE" != "general" ]; then
     # Extract different prompt types based on parameter
     case "$PROMPT_TYPE" in
-        "modality")
-            QUESTION=$(grep -A 10 "a) Modality Recognition:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
+        "clarity")
+            QUESTION=$(grep -A 10 "a) Clarity Enhancement:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
             ;;
-        "anatomy")
-            QUESTION=$(grep -A 10 "b) Anatomical Mapping:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
+        "highlight")
+            QUESTION=$(grep -A 10 "b) Abnormality Highlighting:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
             ;;
-        "abnormality")
-            QUESTION=$(grep -A 10 "c) Abnormality Detection:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
+        "structure")
+            QUESTION=$(grep -A 10 "c) Structural Delineation:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
             ;;
-        "congenital")
-            QUESTION=$(grep -A 10 "d) Congenital Variant Recognition:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
-            ;;
-        "thoracic")
-            QUESTION=$(grep -A 10 "a) Thoracic Analysis:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
-            ;;
-        "abdominal")
-            QUESTION=$(grep -A 10 "b) Abdominal Assessment:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
-            ;;
-        "neuro")
-            QUESTION=$(grep -A 10 "c) Neuroimaging Interpretation:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
-            ;;
-        "brain_viability")
-            QUESTION=$(grep -A 10 "f) Brain Viability Assessment:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
-            ;;
-        "msk")
-            QUESTION=$(grep -A 10 "d) Musculoskeletal Examination:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
-            ;;
-        "genitourinary")
-            QUESTION=$(grep -A 10 "e) Genitourinary System Analysis:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
-            ;;
-        "diagnosis")
-            QUESTION=$(grep -A 10 "a) Differential Diagnosis:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
+        "multi")
+            QUESTION=$(grep -A 10 "d) Multi-structure Enhancement:" "$PROMPT_FILE" | grep "Example prompt:" | sed 's/.*Example prompt: "\([^"]*\)".*/\1/')
             ;;
         *)
-            # Default comprehensive analysis
-            QUESTION="Analyze this medical image. Identify the imaging modality, describe visible anatomical structures, and note any abnormalities, congenital variations, or developmental anomalies. Include observations about organ position, shape, and symmetry."
+            # Default comprehensive enhancement
+            QUESTION="Reconstruct this medical image with enhanced clarity. Highlight any anatomical abnormalities, congenital variations, or pathological findings. Pay special attention to organ position, structural relationships, and any asymmetries."
             ;;
     esac
 else
     # Default prompt if file not found
-    QUESTION="Analyze this medical image. Identify the imaging modality, describe visible anatomical structures, and note any abnormalities, congenital variations, or developmental anomalies. Include observations about organ position, shape, and symmetry."
+    QUESTION="Reconstruct this medical image with enhanced clarity. Highlight any anatomical abnormalities, congenital variations, or pathological findings. Pay special attention to organ position, structural relationships, and any asymmetries."
 fi
 
 echo "Using prompt: $QUESTION"
@@ -158,29 +143,32 @@ with open(filename, 'w') as f:
 print(f"Modified {filename} for device-agnostic execution")
 EOFSCRIPT
 
-# Apply the patch to com_infer_phi4.py
-python3 $TMP_PATCH_SCRIPT "$(dirname "$0")/com_infer_phi4.py"
+# Apply the patch to gen_infer.py (we'll use the same script but with different model)
+python3 $TMP_PATCH_SCRIPT "$(dirname "$0")/gen_infer.py"
 rm $TMP_PATCH_SCRIPT
 
-# Run the inference with all arguments
-python3 -u "$(dirname "$0")/com_infer_phi4.py" \
+# Run inference
+python3 "$(dirname "$0")/gen_infer.py" \
     --model_name_or_path "$MODEL_NAME_OR_PATH" \
     --dtype "FP16" \
-    --hlora_r "64" \
-    --hlora_alpha "128" \
+    --hlora_r "256" \
+    --hlora_alpha "512" \
     --hlora_nums "4" \
     --vq_idx_nums "8192" \
     --instruct_template "phi3_instruct" \
     --vit_path "$VIT_PATH" \
     --hlora_path "$HLORA_PATH" \
+    --fusion_layer_path "$FUSION_LAYER_PATH" \
     --question "$QUESTION" \
-    --img_path "$IMAGE_PATH"
+    --img_path "$IMAGE_PATH" \
+    --save_path "$OUTPUT_PATH"
 
 STATUS=$?
 
 if [ $STATUS -eq 0 ]; then
-    echo "======= Phi-4 Inference completed successfully ======="
+    echo "======= Phi-4 Image generation completed successfully ======="
+    echo "Output saved to: $OUTPUT_PATH"
 else
-    echo "======= Phi-4 Inference failed with exit code $STATUS ======="
+    echo "======= Phi-4 Image generation failed with exit code $STATUS ======="
     echo "Please check the error messages above for more information."
-fi
+fi 

@@ -178,6 +178,152 @@ python3 gen_infer.py \
 
 ```
 
+## 🧠 Prompting System
+
+HealthGPT uses a structured prompting system designed specifically for medical image analysis. This system guides the model to perform systematic analysis across various medical imaging modalities.
+
+### Core Capabilities
+
+HealthGPT excels at:
+
+1. **Comprehensive Modality Identification**
+   - Accurately identifies X-ray, CT, MRI, ultrasound and other imaging modalities
+   - Recognizes specialized protocols (contrast-enhanced, T1/T2-weighted, etc.)
+
+2. **Anatomical Analysis**
+   - Systematically describes visible anatomical structures with medical precision
+   - Evaluates position, shape, size, and density/intensity of all visible organs
+
+3. **Abnormality Detection**
+   - Identifies positional, structural, and appearance abnormalities
+   - Recognizes congenital anomalies, developmental variants, and pathologies
+   - Detects masses, fluid collections, calcifications, and other significant findings
+
+4. **Relational Assessment**
+   - Analyzes vascular structures and their relationships to organs
+   - Evaluates symmetry/asymmetry of paired structures
+   - Identifies spatial relationships between anatomical structures
+
+5. **Image Enhancement and Reconstruction**
+   - Reconstructs medical images with enhanced clarity
+   - Highlights anatomical abnormalities and pathological findings
+   - Preserves and emphasizes clinically relevant details
+
+### Prompting Structure
+
+To get optimal results from HealthGPT, structure your prompts following these guidelines:
+
+#### For Comprehension Tasks:
+
+```
+Analyze this medical image. Identify the imaging modality, describe visible 
+anatomical structures, and note any abnormalities, congenital variations, 
+or developmental anomalies. Include observations about organ position, 
+shape, and symmetry.
+```
+
+#### For Generation/Enhancement Tasks:
+
+```
+Reconstruct this medical image with enhanced clarity. Highlight any anatomical 
+abnormalities, congenital variations, or pathological findings. Pay special 
+attention to organ position, structural relationships, and any asymmetries.
+```
+
+### Model-Specific Instruction Templates
+
+HealthGPT uses different instruction templates depending on the underlying model:
+
+#### Phi-3 Template:
+The model uses a comprehensive system prompt that guides it through a 10-step analysis process:
+1. Identifying the imaging modality
+2. Describing anatomical regions
+3. Noting position, shape, size, and density/intensity
+4. Identifying abnormalities
+5. Looking for pathological signs
+6. Commenting on congenital anomalies
+7. Describing vascular structures
+8. Assessing symmetry
+9. Considering possible diagnoses
+10. Suggesting additional tests
+
+#### Phi-4 Template:
+Similar to Phi-3 but adapted for the enhanced capabilities of Phi-4, with additional emphasis on:
+- More detailed anatomical relationships
+- Higher precision in identifying subtle abnormalities
+- Enhanced diagnostic reasoning
+
+### Where HealthGPT Excels
+
+HealthGPT particularly excels in:
+
+1. **Kidney and Urinary Tract Imaging**
+   - Identifying horseshoe kidneys and other congenital variations
+   - Detecting nephrolithiasis, hydronephrosis, and masses
+   - Recognizing anomalies in the collecting system
+
+2. **Chest Imaging**
+   - Analyzing pulmonary nodules and infiltrates
+   - Evaluating cardiac silhouette and mediastinum
+   - Identifying pleural effusions and pneumothorax
+
+3. **Neuroimaging**
+   - Detecting intracranial hemorrhage and masses
+   - Identifying infarcts and white matter changes
+   - Analyzing ventricular size and symmetry
+
+4. **Abdominal Imaging**
+   - Comprehensive liver assessment
+   - Pancreatic and biliary evaluation
+   - Detection of free fluid and masses
+
+5. **Musculoskeletal Analysis**
+   - Fracture detection and classification
+   - Joint space evaluation
+   - Bone density assessment
+
+These capabilities are enabled by HealthGPT's training on diverse medical datasets and its specialized architecture combining visual perception with medical knowledge.
+
+### Using v0-Style Prompt Files
+
+We've created a structured prompting system inspired by v0.dev that separates prompts into specialized files for greater clarity and flexibility. These files can be found in the root directory:
+
+1. **medical0.txt**: Core instructions for the medical analysis system
+   - Contains the 10-step analysis protocol
+   - Defines expected response format
+   - Sets ethical guidelines
+
+2. **medical0.model.txt**: Model-specific details
+   - Describes differences between Phi-3 and Phi-4 models
+   - Contains technical parameters for each model variant
+   - Lists model limitations and capabilities
+
+3. **medical0.tools.txt**: Detailed analysis tools and capabilities
+   - Describes specialized analysis capabilities for different body systems
+   - Provides example prompts for different analysis tasks
+   - Documents image enhancement and reconstruction capabilities
+
+#### Implementation Options
+
+You can implement these structured prompts in your HealthGPT system in two ways:
+
+1. **Direct Integration**: Load the full prompts directly into the conversation templates:
+   ```python
+   # Example integration in conversation.py
+   with open("medical0.txt", "r") as f:
+       system_prompt = f.read()
+   
+   conv_phi3_instruct = Conversation(
+       system=system_prompt,
+       roles=("\n<|user|>\n", "\n<|assistant|>\n"),
+       # ... other parameters
+   )
+   ```
+
+2. **Script-Based Approach**: Keep the current implementation with long prompts in conversation.py and shorter versions in scripts, using the structured files as reference documentation.
+
+The v0-style prompting approach helps standardize outputs, ensures comprehensive analysis, and makes the system more maintainable as capabilities evolve.
+
 ## Server
 
 **An interactive Chat UI based on Gradio, supporting text + image input, and returning text or images according to different modes.**

@@ -1,0 +1,166 @@
+1. Medical Imaging Analysis Tools:
+
+a) Modality Recognition:
+   - Purpose: Identify the imaging technique used
+   - Capabilities:
+     * Distinguishes between X-ray, CT, MRI, ultrasound, etc.
+     * Recognizes variations like contrast-enhanced studies
+     * Identifies sequence types in MRI (T1, T2, FLAIR, etc.)
+     * Detects specialized techniques like angiography
+   - Example prompt: "Analyze this medical image. First identify the imaging modality."
+
+b) Anatomical Mapping:
+   - Purpose: Comprehensive identification of visible anatomical structures
+   - Capabilities:
+     * Labels normal anatomical structures according to medical standards
+     * Uses precise anatomical terminology
+     * Notes positional relationships between structures
+     * Describes visible boundaries and interfaces
+   - Example prompt: "Describe all visible anatomical structures in this image."
+
+c) Abnormality Detection:
+   - Purpose: Identify deviations from normal appearance
+   - Capabilities:
+     * Detects masses, nodules, and lesions
+     * Identifies fluid collections and effusions
+     * Recognizes calcifications and ossifications
+     * Notes structural deformities and asymmetries
+   - Example prompt: "Note any abnormalities present in this medical image."
+
+d) Congenital Variant Recognition:
+   - Purpose: Identify developmental anomalies and anatomical variants
+   - Capabilities:
+     * Recognizes fusion abnormalities (e.g., horseshoe kidney)
+     * Identifies ectopic organs or tissues
+     * Detects developmental variants in vascular patterns
+     * Notes variations in normal anatomy
+   - Example prompt: "Identify any congenital variations or developmental anomalies."
+
+e) Measurement Assessment:
+   - Purpose: Evaluate size, density, and other quantifiable aspects
+   - Capabilities:
+     * Estimates sizes of structures and abnormalities
+     * Assesses tissue density/intensity
+     * Evaluates proportionality of structures
+     * Compares measurements to normal ranges
+   - Example prompt: "Analyze the size and density of visible structures."
+
+f) Brain Viability Assessment:
+   Description: Evaluate brain tissue for signs of viability, ischemia, necrosis, or brain death.
+   Key focus: Identify specific markers of brain tissue viability or non-viability, including mass effect, edema patterns, 
+   gray-white matter differentiation, basal ganglia appearance, and signs of herniation or compression.
+   Example prompt: "Analyze this brain imaging study in detail. Assess for signs of brain viability or non-viability. Look for evidence of cerebral edema, loss of gray-white matter differentiation, mass effect, midline shift, basal ganglia visibility, brainstem compression, and any patterns consistent with global ischemia or brain death. Comment on any visible herniation or abnormal tissue density that may indicate irreversible damage."
+
+2. Image Enhancement and Reconstruction Tools:
+
+a) Clarity Enhancement:
+   - Purpose: Improve image visibility while preserving diagnostic information
+   - Capabilities:
+     * Enhances contrast in relevant areas
+     * Maintains true representation of tissues
+     * Preserves subtle details critical for diagnosis
+     * Reduces artifacts and noise
+   - Example prompt: "Reconstruct this image with enhanced clarity."
+
+b) Abnormality Highlighting:
+   - Purpose: Emphasize areas of pathology or anatomical interest
+   - Capabilities:
+     * Highlights abnormal areas while maintaining context
+     * Preserves relationship to surrounding structures
+     * Enhances visibility of subtle abnormalities
+     * Maintains anatomical accuracy
+   - Example prompt: "Highlight any abnormalities in this medical image."
+
+c) Structural Delineation:
+   - Purpose: Define boundaries between different tissues and structures
+   - Capabilities:
+     * Enhances borders between structures
+     * Preserves anatomical relationships
+     * Improves visualization of interfaces
+     * Maintains diagnostic fidelity
+   - Example prompt: "Enhance the visibility of structural boundaries in this image."
+
+d) Multi-structure Enhancement:
+   - Purpose: Simultaneously enhance multiple anatomical features
+   - Capabilities:
+     * Balances enhancement across different tissue types
+     * Preserves density/intensity relationships
+     * Maintains diagnostic accuracy across the image
+     * Enhances visibility of complex anatomical relationships
+   - Example prompt: "Reconstruct this image with enhanced visibility of all structures."
+
+3. Specialized Analysis Areas:
+
+a) Thoracic Analysis:
+   - Purpose: Detailed assessment of chest imaging
+   - Capabilities:
+     * Evaluates lung fields and pleural spaces
+     * Assesses cardiac silhouette and mediastinum
+     * Analyzes pulmonary vasculature
+     * Examines bony thorax and diaphragm
+   - Example prompt: "Analyze this chest image in detail."
+
+b) Abdominal Assessment:
+   - Purpose: Comprehensive analysis of abdominal structures
+   - Capabilities:
+     * Evaluates solid organs (liver, spleen, kidneys, etc.)
+     * Assesses hollow organs and bowel patterns
+     * Identifies vascular structures
+     * Detects free fluid or gas
+   - Example prompt: "Analyze the abdominal structures in this image."
+
+c) Neuroimaging Interpretation:
+   - Purpose: Specialized brain and spinal cord analysis
+   - Capabilities:
+     * Evaluates brain parenchyma and ventricles
+     * Assesses extra-axial spaces
+     * Examines vascular structures
+     * Analyzes spinal cord and vertebral column
+   - Example prompt: "Analyze this neuroimaging study in detail."
+
+d) Musculoskeletal Examination:
+   - Purpose: Assessment of bones, joints, and surrounding tissues
+   - Capabilities:
+     * Evaluates bone density and cortical integrity
+     * Assesses joint spaces and alignment
+     * Examines soft tissues surrounding joints
+     * Detects fractures, dislocations, and degenerative changes
+   - Example prompt: "Analyze the musculoskeletal structures in this image."
+
+e) Genitourinary System Analysis:
+   - Purpose: Focused assessment of urinary tract and reproductive organs
+   - Capabilities:
+     * Evaluates kidneys, ureters, and bladder
+     * Assesses prostate or uterus when visible
+     * Identifies urinary calculi
+     * Detects congenital variants of the urinary system
+   - Example prompt: "Analyze the urinary tract structures in this image."
+
+4. Advanced Reasoning Tools:
+
+a) Differential Diagnosis:
+   - Purpose: Generate possible diagnoses based on imaging findings
+   - Capabilities:
+     * Presents most likely diagnoses based on imaging features
+     * Ranks possibilities by probability when possible
+     * Correlates findings with potential clinical significance
+     * Maintains appropriate diagnostic uncertainty
+   - Example prompt: "What are the possible diagnoses based on these imaging findings?"
+
+b) Recommendation Generation:
+   - Purpose: Suggest appropriate follow-up studies
+   - Capabilities:
+     * Recommends additional imaging when appropriate
+     * Suggests optimal modalities for further evaluation
+     * Proposes clinical correlation when needed
+     * Indicates timeframe for follow-up studies when relevant
+   - Example prompt: "What additional studies might be helpful based on these findings?"
+
+c) Limitations Assessment:
+   - Purpose: Identify constraints of current analysis
+   - Capabilities:
+     * Recognizes technical limitations of provided images
+     * Acknowledges diagnostic uncertainty
+     * Identifies areas requiring additional views or studies
+     * Notes when clinical correlation is essential
+   - Example prompt: "What are the limitations of this imaging study?" 

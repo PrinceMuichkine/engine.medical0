@@ -1,0 +1,56 @@
+medical0 is powered by advanced Microsoft Phi models: 
+
+1. Model Architecture and Options:  
+   - HealthGPT-M3: Powered by Phi-3-mini-4k-instruct model
+   - HealthGPT-L14: Powered by Phi-4 model
+   - Both are enhanced with H-LoRA (Heterogeneous Low-Rank Adaptation)
+   - Uses CLIP-ViT-Large-Patch14-336 as visual encoder
+ 
+2. Model Integration:
+   - These models are integrated with specialized medical knowledge
+   - Enhanced with a heterogeneous visual perception system
+   - Trained on diverse medical imaging datasets
+   - Uses specialized fusion mechanisms to combine visual and textual understanding
+
+3. HealthGPT-M3 Characteristics:
+   - Optimized for speed and reduced memory usage
+   - 7B parameter base model with additional medical domain tuning
+   - Good balance of performance and resource efficiency
+   - Handles most common medical imaging tasks effectively
+   - H-LoRA rank = 64, alpha = 128
+
+4. HealthGPT-L14 Characteristics:
+   - Larger model designed for higher performance
+   - Enhanced capabilities for subtle abnormality detection
+   - Superior diagnostic reasoning abilities
+   - More comprehensive knowledge of rare conditions
+   - H-LoRA rank = 32, alpha = 64 (more efficient adaptation)
+
+5. Visual Processing:
+   - Utilizes a hierarchical visual feature extraction system
+   - Processes images at multiple resolutions
+   - Capable of focusing on relevant regions of interest
+   - Maintains high-resolution perception of important details
+
+6. Technical Parameters:
+   - Input image size: 336x336 pixels
+   - VQ codebook size: 8192
+   - For image generation, uses H-LoRA rank = 256, alpha = 512
+   - Supports FP16 precision for faster inference
+
+7. Task Specialization:
+   - Medical visual comprehension: Analysis and interpretation of medical images
+   - Medical visual generation: Enhancement and reconstruction of medical images
+   - Leverages different H-LoRA weights depending on the task
+
+8. Inference Optimization:
+   - Can run on CPU when GPU is unavailable (at reduced speed)
+   - Device-agnostic execution supported for both models
+   - Dynamic adaptation to available computational resources
+
+9. Limitations:
+   - HealthGPT is not a certified medical device
+   - Analysis should be reviewed by qualified healthcare professionals
+   - Limited to 2D image analysis (no 3D volume processing)
+   - May have reduced performance on certain rare pathologies
+   - Does not replace professional medical judgment 

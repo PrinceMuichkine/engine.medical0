@@ -1,10 +1,11 @@
 # Modified from LLaVA: https://github.com/haotian-liu/LLaVA.git
 import dataclasses
 from enum import auto, Enum
-from typing import List, Tuple
+from typing import List, Tuple, Union
 import base64
 from io import BytesIO
 from PIL import Image
+import os
 
 
 class SeparatorStyle(Enum):
@@ -14,6 +15,17 @@ class SeparatorStyle(Enum):
     MPT = auto()
     PLAIN = auto()
     LLAMA_2 = auto()
+
+
+# Helper function to load prompt files
+def load_prompt_file(filename):
+    filepath = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), filename)
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as f:
+            return f.read()
+    else:
+        # Fallback to existing prompts if files aren't found
+        return None
 
 
 @dataclasses.dataclass
@@ -370,8 +382,48 @@ Answer the questions.""",
     sep="<|im_end|>",
 )
 
+# For Phi-3 template
+medical0_prompt = load_prompt_file("medical0.txt")
+phi3_system = """<|system|>\nYou are a highly skilled medical imaging specialist. When analyzing any medical image:
+
+1. First identify the imaging modality (X-ray, CT, MRI, ultrasound, etc.)
+2. Systematically describe the anatomical regions visible in the image
+3. Note the position, shape, size, and density/intensity of all visible organs and structures
+4. Identify any abnormalities in position, structure, or appearance
+5. Look for signs of pathology such as masses, fluid collections, calcifications, or anatomical variants
+6. Comment on any congenital anomalies or developmental variants present
+7. Describe vascular structures and their relationship to organs if visible
+8. Assess for symmetry or asymmetry of paired structures
+9. Consider possible diagnoses based on imaging findings
+10. Suggest additional imaging or tests that might be helpful
+
+Be thorough, precise, and use appropriate medical terminology."""
+
+if medical0_prompt:
+    phi3_system = "<|system|>\n" + medical0_prompt
+
+# For Phi-4 template
+phi4_system = """<|im_start|>system
+You are a highly skilled medical imaging specialist. When analyzing any medical image:
+
+1. First identify the imaging modality (X-ray, CT, MRI, ultrasound, etc.)
+2. Systematically describe the anatomical regions visible in the image
+3. Note the position, shape, size, and density/intensity of all visible organs and structures
+4. Identify any abnormalities in position, structure, or appearance
+5. Look for signs of pathology such as masses, fluid collections, calcifications, or anatomical variants
+6. Comment on any congenital anomalies or developmental variants present
+7. Describe vascular structures and their relationship to organs if visible
+8. Assess for symmetry or asymmetry of paired structures
+9. Consider possible diagnoses based on imaging findings
+10. Suggest additional imaging or tests that might be helpful
+
+Be thorough, precise, and use appropriate medical terminology."""
+
+if medical0_prompt:
+    phi4_system = "<|im_start|>system\n" + medical0_prompt
+
 conv_phi3_instruct = Conversation(
-    system="""<|system|>\nYou are a helpful AI assistant.""",
+    system=phi3_system,
     roles=("\n<|user|>\n", "\n<|assistant|>\n"),
     version="phi3",
     messages=(),
@@ -380,9 +432,8 @@ conv_phi3_instruct = Conversation(
     sep="<|end|>",
 )
 
-
 conv_phi4_instruct = Conversation(
-    system="""<|im_start|>system<|im_sep|>\nYou are a medieval knight and must provide explanations to modern people.""",
+    system=phi4_system,
     roles=("\n<|im_start|>user<|im_sep|>\n", "\n<|im_start|>assistant<|im_sep|>\n"),
     version="phi4",
     messages=(),
