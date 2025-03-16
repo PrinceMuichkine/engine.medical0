@@ -3,6 +3,7 @@
 # Get the image path from command line argument
 IMAGE_PATH=${1:-"path/to/default/image.jpg"}
 PROMPT_TYPE=${2:-"general"}
+USE_CACHE=${3:-"true"}  # New parameter to control caching
 
 # Activate conda environment to ensure all dependencies are available
 if [[ -f "/root/anaconda3/etc/profile.d/conda.sh" ]]; then
@@ -24,11 +25,53 @@ fi
 # Set environment variables
 export PYTHONUNBUFFERED=1
 
-# Model and weights paths
+# Model and weights paths - default location
 MODEL_NAME_OR_PATH="microsoft/Phi-3-mini-4k-instruct"
 VIT_PATH="openai/clip-vit-large-patch14-336"
 HLORA_PATH="../../weights/com_hlora_weights.bin"
 FUSION_LAYER_PATH="../../weights/fusion_layer_weights.bin"
+
+# Alternative weight paths to try if the default isn't found
+ALT_WEIGHT_PATHS=(
+    "../../weights" # Default relative path
+    "./weights"     # Local weights directory
+    "../weights"    # Parent directory
+    "weights"       # Current directory
+    "/root/engine.medical0/weights" # Absolute path to project root
+)
+
+# Function to find a file in multiple locations
+find_file() {
+    local filename=$1
+    local default_path=$2
+    
+    # First check if the default path exists
+    if [ -f "$default_path" ]; then
+        echo "$default_path"
+        return 0
+    fi
+    
+    # Try alternative paths
+    for path in "${ALT_WEIGHT_PATHS[@]}"; do
+        local full_path="$path/$(basename "$filename")"
+        if [ -f "$full_path" ]; then
+            echo "$full_path"
+            return 0
+        fi
+    done
+    
+    # Fall back to the default if nothing is found
+    echo "$default_path"
+    return 1
+}
+
+# Find weight files
+HLORA_PATH=$(find_file "com_hlora_weights.bin" "$HLORA_PATH")
+FUSION_LAYER_PATH=$(find_file "fusion_layer_weights.bin" "$FUSION_LAYER_PATH")
+
+# Print the paths being used
+echo "Using HLORA weights path: $HLORA_PATH"
+echo "Using fusion layer path: $FUSION_LAYER_PATH"
 
 # New code to read prompts from files
 PROMPT_FILE="../../medical0.tools.txt"
@@ -83,6 +126,7 @@ echo "Using image: $IMAGE_PATH"
 echo "Using prompt: $QUESTION"
 echo "Model: $MODEL_NAME_OR_PATH"
 echo "VIT path: $VIT_PATH"
+echo "Caching enabled: $USE_CACHE"
 
 # Check if image exists
 if [ ! -f "$IMAGE_PATH" ]; then
@@ -90,21 +134,80 @@ if [ ! -f "$IMAGE_PATH" ]; then
     exit 1
 fi
 
-# Check if weights exist
-if [ ! -f "$HLORA_PATH" ]; then
-    echo "ERROR: H-LoRA weights file does not exist: $HLORA_PATH"
-    exit 1
-fi
+# Advanced weight file handling
+check_and_resolve_weight_file() {
+    local file_path=$1
+    local file_name=$(basename "$file_path")
+    local source_path=""
+    
+    if [ -f "$file_path" ]; then
+        echo "Found $file_name at $file_path"
+        return 0
+    fi
+    
+    echo "WARNING: $file_name not found at expected location: $file_path"
+    
+    # Try to find it in common locations
+    for search_dir in "/root/engine.medical0/weights" "/weights" "./weights" "../weights" "../../weights"; do
+        test_path="$search_dir/$file_name"
+        if [ -f "$test_path" ]; then
+            source_path="$test_path"
+            echo "Found $file_name at alternative location: $source_path"
+            break
+        fi
+    done
+    
+    # If found elsewhere, try to create a symlink or copy it
+    if [ -n "$source_path" ]; then
+        # Create the target directory if it doesn't exist
+        mkdir -p "$(dirname "$file_path")"
+        
+        # Try to create a symlink first
+        echo "Creating symlink from $source_path to $file_path"
+        ln -sf "$source_path" "$file_path" 2>/dev/null
+        
+        # If symlink failed, try to copy
+        if [ ! -f "$file_path" ]; then
+            echo "Symlink failed, copying file instead"
+            cp "$source_path" "$file_path"
+        fi
+        
+        # Check if it worked
+        if [ -f "$file_path" ]; then
+            echo "Successfully made $file_name available at $file_path"
+            return 0
+        fi
+    fi
+    
+    # Final absolute path check - use it directly if found
+    for abs_path in $(find /root -name "$file_name" 2>/dev/null); do
+        echo "Found $file_name at: $abs_path"
+        echo "Using absolute path instead of relative path"
+        # Override the path variable in the parent scope
+        eval "$2=\"$abs_path\""
+        return 0
+    done
+    
+    echo "ERROR: Could not locate $file_name in any standard location"
+    return 1
+}
 
-if [ ! -f "$FUSION_LAYER_PATH" ]; then
-    echo "ERROR: Fusion layer weights file does not exist: $FUSION_LAYER_PATH"
+# Check weights and try to resolve issues
+check_and_resolve_weight_file "$HLORA_PATH" "HLORA_PATH" || {
+    echo "ERROR: Failed to locate or access H-LoRA weights file"
     exit 1
-fi
+}
+
+check_and_resolve_weight_file "$FUSION_LAYER_PATH" "FUSION_LAYER_PATH" || {
+    echo "ERROR: Failed to locate or access fusion layer weights file"
+    exit 1
+}
 
 # Print execution trace
 set -x
 
 # Run the inference with all arguments
+echo "Running model inference..."
 python3 -u com_infer.py \
     --model_name_or_path "$MODEL_NAME_OR_PATH" \
     --dtype "FP16" \
@@ -117,7 +220,8 @@ python3 -u com_infer.py \
     --hlora_path "$HLORA_PATH" \
     --fusion_layer_path "$FUSION_LAYER_PATH" \
     --question "$QUESTION" \
-    --img_path "$IMAGE_PATH"
+    --img_path "$IMAGE_PATH" \
+    --use_cache "$USE_CACHE"
 
 # Capture the exit status
 STATUS=$?
@@ -147,7 +251,8 @@ else
             --hlora_path "$HLORA_PATH" \
             --fusion_layer_path "$FUSION_LAYER_PATH" \
             --question "$QUESTION" \
-            --img_path "$IMAGE_PATH"
+            --img_path "$IMAGE_PATH" \
+            --use_cache "$USE_CACHE"
             
         if [ $? -eq 0 ]; then
             echo "======= CPU inference completed successfully ======="

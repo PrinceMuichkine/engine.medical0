@@ -14,27 +14,10 @@ import logging
 import requests
 from urllib.parse import urlparse
 import time
-import importlib.util
-import argparse
-import socket
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('healthgpt-api')
-
-# Check if model_engine.py exists and import it
-model_engine = None
-model_engine_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_engine.py")
-if os.path.exists(model_engine_path):
-    try:
-        # Import model_engine dynamically
-        spec = importlib.util.spec_from_file_location("model_engine", model_engine_path)
-        model_engine = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(model_engine)
-        logger.info("Successfully imported model_engine module")
-    except Exception as e:
-        logger.error(f"Failed to import model_engine module: {e}")
-        model_engine = None
 
 # Set custom temp directory
 temp_dir = "temp"
@@ -472,6 +455,69 @@ def analyze_image():
     weights_path = data.get('weights_path')  # Optional custom weights path
     base_path = data.get('base_path')  # Optional base path
     debug = data.get('debug', False)  # Debug mode
+
+    # Find available weight files before running the script
+    weight_files = find_weight_files()
+    
+    # If weights_path is provided, ensure it exists
+    if weights_path:
+        logger.info(f"Custom weights path provided: {weights_path}")
+        abs_weights_path = os.path.abspath(weights_path)
+        if os.path.exists(abs_weights_path):
+            logger.info(f"Weights path exists: {abs_weights_path}")
+            # Check if the H-LoRA weights file exists
+            hlora_weights_path = os.path.join(abs_weights_path, "com_hlora_weights.bin")
+            if os.path.exists(hlora_weights_path):
+                logger.info(f"H-LoRA weights file exists: {hlora_weights_path}")
+                # Create symlink in case the script expects files in a different location
+                try:
+                    # Create symlink in llava/demo if it doesn't exist
+                    script_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "llava", "demo")
+                    target_dir = os.path.join(script_dir, "weights")
+                    if not os.path.exists(target_dir):
+                        logger.info(f"Creating symlink from {abs_weights_path} to {target_dir}")
+                        os.symlink(abs_weights_path, target_dir)
+                except Exception as e:
+                    logger.warning(f"Error creating symlink: {str(e)}")
+            else:
+                logger.error(f"H-LoRA weights file not found at {hlora_weights_path}")
+        else:
+            logger.error(f"Provided weights path does not exist: {abs_weights_path}")
+
+    # Ensure the script can find the weights in the location it expects (../../weights)
+    # Get script directory
+    script_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "llava", "demo")
+    
+    # Direct relative path correction - create the directory structure the script expects
+    expected_weights_dir = os.path.abspath(os.path.join(script_dir, '..', '..', 'weights'))
+    
+    # Ensure the expected directory exists
+    os.makedirs(os.path.dirname(expected_weights_dir), exist_ok=True)
+    
+    # Create symlink if it doesn't exist and we have weights elsewhere
+    if not os.path.exists(expected_weights_dir) and weight_files:
+        # Find the actual weights directory
+        source_weights_dir = os.path.dirname(next(iter(weight_files.values())))
+        logger.info(f"Creating symlink from {source_weights_dir} to {expected_weights_dir}")
+        try:
+            os.symlink(source_weights_dir, expected_weights_dir)
+        except Exception as e:
+            logger.warning(f"Error creating expected weights symlink: {str(e)}")
+            
+            # If symlink fails, try direct copying of weight files
+            try:
+                logger.info(f"Attempting to copy weight files directly to {expected_weights_dir}")
+                os.makedirs(expected_weights_dir, exist_ok=True)
+                for file_name, file_path in weight_files.items():
+                    target_path = os.path.join(expected_weights_dir, file_name)
+                    if not os.path.exists(target_path):
+                        logger.info(f"Copying {file_path} to {target_path}")
+                        import shutil
+                        shutil.copy2(file_path, target_path)
+            except Exception as copy_err:
+                logger.error(f"Error copying weight files: {str(copy_err)}")
+
+    logger.info(f"Analyze request details: analysis_type={analysis_type}, use_phi4={use_phi4}, question_length={len(question) if question else 0}, weights_path={weights_path}, debug={debug}")
     
     image_path = None
     downloaded_path = None  # Track if we downloaded a remote image
@@ -533,99 +579,6 @@ def analyze_image():
             
             logger.info(f"Using default question for analysis: {question[:50]}...")
         
-        # Check if we can use the model_engine for fast inference
-        if model_engine is not None:
-            logger.info("Using model_engine for fast inference")
-            
-            # Load the model if not already loaded
-            if not hasattr(model_engine, 'model_loaded') or not model_engine.model_loaded:
-                logger.info(f"Loading model (use_phi4={use_phi4})...")
-                model_loaded = model_engine.load_model(use_phi4=use_phi4)
-                if not model_loaded:
-                    logger.error("Failed to load model through model_engine")
-                    # Fall back to script-based approach
-                    model_engine = None
-                else:
-                    model_engine.model_loaded = True
-                    logger.info("Model loaded successfully")
-            
-            # If model is loaded, use it for inference
-            if hasattr(model_engine, 'model_loaded') and model_engine.model_loaded:
-                logger.info(f"Running inference with model_engine (analysis_type={analysis_type})")
-                result, status_code = model_engine.analyze_image(image_path, question, analysis_type)
-                
-                if status_code == 200:
-                    logger.info("Inference completed successfully with model_engine")
-                    return jsonify(result), 200
-                else:
-                    logger.error(f"model_engine inference failed: {result.get('error', 'Unknown error')}")
-                    # Fall back to script-based approach
-                    model_engine = None
-        
-        # If model_engine is not available or failed, fall back to the original script-based approach
-        logger.info("Using script-based approach for inference")
-        
-        # Find available weight files before running the script
-        weight_files = find_weight_files()
-        
-        # If weights_path is provided, ensure it exists
-        if weights_path:
-            logger.info(f"Custom weights path provided: {weights_path}")
-            abs_weights_path = os.path.abspath(weights_path)
-            if os.path.exists(abs_weights_path):
-                logger.info(f"Weights path exists: {abs_weights_path}")
-                # Check if the H-LoRA weights file exists
-                hlora_weights_path = os.path.join(abs_weights_path, "com_hlora_weights.bin")
-                if os.path.exists(hlora_weights_path):
-                    logger.info(f"H-LoRA weights file exists: {hlora_weights_path}")
-                    # Create symlink in case the script expects files in a different location
-                    try:
-                        # Create symlink in llava/demo if it doesn't exist
-                        script_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "llava", "demo")
-                        target_dir = os.path.join(script_dir, "weights")
-                        if not os.path.exists(target_dir):
-                            logger.info(f"Creating symlink from {abs_weights_path} to {target_dir}")
-                            os.symlink(abs_weights_path, target_dir)
-                    except Exception as e:
-                        logger.warning(f"Error creating symlink: {str(e)}")
-                else:
-                    logger.error(f"H-LoRA weights file not found at {hlora_weights_path}")
-            else:
-                logger.error(f"Provided weights path does not exist: {abs_weights_path}")
-
-        # Ensure the script can find the weights in the location it expects (../../weights)
-        # Get script directory
-        script_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "llava", "demo")
-        
-        # Direct relative path correction - create the directory structure the script expects
-        expected_weights_dir = os.path.abspath(os.path.join(script_dir, '..', '..', 'weights'))
-        
-        # Ensure the expected directory exists
-        os.makedirs(os.path.dirname(expected_weights_dir), exist_ok=True)
-        
-        # Create symlink if it doesn't exist and we have weights elsewhere
-        if not os.path.exists(expected_weights_dir) and weight_files:
-            # Find the actual weights directory
-            source_weights_dir = os.path.dirname(next(iter(weight_files.values())))
-            logger.info(f"Creating symlink from {source_weights_dir} to {expected_weights_dir}")
-            try:
-                os.symlink(source_weights_dir, expected_weights_dir)
-            except Exception as e:
-                logger.warning(f"Error creating expected weights symlink: {str(e)}")
-                
-                # If symlink fails, try direct copying of weight files
-                try:
-                    logger.info(f"Attempting to copy weight files directly to {expected_weights_dir}")
-                    os.makedirs(expected_weights_dir, exist_ok=True)
-                    for file_name, file_path in weight_files.items():
-                        target_path = os.path.join(expected_weights_dir, file_name)
-                        if not os.path.exists(target_path):
-                            logger.info(f"Copying {file_path} to {target_path}")
-                            import shutil
-                            shutil.copy2(file_path, target_path)
-                except Exception as copy_err:
-                    logger.error(f"Error copying weight files: {str(copy_err)}")
-
         # Use our wrapper script if it exists, otherwise fall back to original approach
         wrapper_script = os.path.join("llava", "demo", "medical0_analyze.sh")
         if os.path.exists(wrapper_script):
@@ -906,35 +859,6 @@ def reconstruct_image():
             
             logger.info(f"Using default question for reconstruction: {question[:50]}...")
         
-        # Check if we can use the model_engine for fast inference
-        if model_engine is not None:
-            logger.info("Using model_engine for fast inference")
-            
-            # Try to load the generator model if not already loaded
-            if not hasattr(model_engine, 'gen_model_loaded') or not model_engine.gen_model_loaded:
-                logger.info(f"Loading generator model...")
-                model_loaded = model_engine.load_gen_model(use_phi4=use_phi4)
-                if not model_loaded:
-                    logger.error("Failed to load generator model through model_engine")
-                    # Fall back to script-based approach
-                    model_engine_gen = None
-                else:
-                    logger.info("Generator model loaded successfully")
-            
-            # If model is loaded, use it for inference
-            if hasattr(model_engine, 'gen_model_loaded') and model_engine.gen_model_loaded:
-                logger.info(f"Running generator inference with model_engine (analysis_type={analysis_type})")
-                result, status_code = model_engine.reconstruct_image(image_path, question, analysis_type)
-                
-                if status_code == 200:
-                    logger.info("Generator inference completed successfully with model_engine")
-                    return jsonify(result), 200
-                else:
-                    logger.error(f"model_engine generator inference failed: {result.get('error', 'Unknown error')}")
-        
-        # If model_engine is not available or failed, fall back to the original script-based approach
-        logger.info("Using script-based approach for image generation")
-        
         # Use our wrapper script if it exists, otherwise fall back to original approach
         wrapper_script = os.path.join("llava", "demo", "medical0_analyze.sh")
         if os.path.exists(wrapper_script):
@@ -1054,44 +978,7 @@ def get_models():
     return jsonify({"models": models})
 
 if __name__ == '__main__':
-    # Setup command line arguments
-    parser = argparse.ArgumentParser(description='HealthGPT API Server')
-    parser.add_argument('--port', type=int, default=5001, help='Port to run the server on')
-    parser.add_argument('--preload-models', action='store_true', default=False, help='Preload models at startup for faster first inference')
-    parser.add_argument('--no-preload-models', action='store_false', dest='preload_models', help='Do not preload models at startup')
-    parser.add_argument('--use-phi4', action='store_true', default=False, help='Use Phi-4 model instead of Phi-3')
-    args = parser.parse_args()
-
-    # Create global variable to track preload preference
-    os.environ['HEALTHGPT_PRELOAD_ENABLED'] = 'true' if args.preload_models else 'false'
-
-    print(f"Starting HealthGPT API on port {args.port} with temp directory: {temp_dir}")
-    
-    # Print network information for debugging
-    try:
-        # Get local IP addresses
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
-        print(f"Hostname: {hostname}")
-        print(f"Local IP: {local_ip}")
-        
-        # Try to get all network interfaces
-        import subprocess
-        print("\nNetwork interfaces:")
-        subprocess.call(['ifconfig' if os.name != 'nt' else 'ipconfig', '/all'])
-        
-        # Check if port is already in use
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(('0.0.0.0', args.port))
-            print(f"Port {args.port} is available")
-        except socket.error:
-            print(f"Port {args.port} is already in use!")
-        finally:
-            s.close()
-    except Exception as e:
-        print(f"Error getting network info: {e}")
+    print(f"Starting HealthGPT API on port 5001 with temp directory: {temp_dir}")
     
     # Initialize weight path resolution at startup
     try:
@@ -1131,26 +1018,4 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"Error during weight path initialization: {str(e)}")
     
-    # Initialize models at startup if model_engine is available and preload is enabled
-    if model_engine is not None and args.preload_models:
-        try:
-            print(f"Pre-loading {'Phi-4' if args.use_phi4 else 'Phi-3'} analysis model at startup...")
-            # Load the analysis model
-            if model_engine.load_model(use_phi4=args.use_phi4):
-                print("Analysis model pre-loaded successfully!")
-            else:
-                print("Failed to pre-load analysis model, will try again on first request")
-                
-            # If analysis model loaded successfully, try to load the generator model
-            if hasattr(model_engine, 'model_loaded') and model_engine.model_loaded:
-                print("Pre-loading generator model at startup...")
-                if model_engine.load_gen_model(use_phi4=args.use_phi4):
-                    print("Generator model pre-loaded successfully!")
-                else:
-                    print("Failed to pre-load generator model, will try again on first request")
-        except Exception as e:
-            print(f"Error pre-loading models: {e}")
-    elif model_engine is not None and not args.preload_models:
-        print("Model preloading disabled by command-line argument. Models will be loaded on first request.")
-    
-    app.run(host='0.0.0.0', port=args.port)
+    app.run(host='0.0.0.0', port=5001)

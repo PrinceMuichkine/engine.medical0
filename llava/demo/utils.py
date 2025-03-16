@@ -87,17 +87,93 @@ gen_vision_args = argparse.Namespace(
     vision_tower=None
 )
 
-def load_weights(model, hlora_path, fusion_layer_path=None):
-    hlora_weights = torch.load(hlora_path)
-    hlora_unexpected_keys = model.load_state_dict(hlora_weights, strict=False)[1]
-    if hlora_unexpected_keys:
-        print(f"Warning: Unexpected keys in hlora checkpoint: {hlora_unexpected_keys}")
+def resize_checkpoint_tensors(state_dict, model_state_dict):
+    """
+    Resize tensors in the checkpoint to match the model's shape
+    This ensures that vocabulary size mismatches can be handled
+    """
+    modified = False
+    
+    # Check each key in the checkpoint
+    for key in list(state_dict.keys()):
+        # Skip if key not in model
+        if key not in model_state_dict:
+            continue
+            
+        # Check if shapes match
+        if state_dict[key].shape != model_state_dict[key].shape:
+            print(f"Resizing mismatch in key {key}: {state_dict[key].shape} vs {model_state_dict[key].shape}")
+            
+            # Handle embeddings and linear layers (2D tensors)
+            if len(state_dict[key].shape) == 2 and len(model_state_dict[key].shape) == 2:
+                old_rows, old_cols = state_dict[key].shape
+                new_rows, new_cols = model_state_dict[key].shape
+                
+                # If rows differ (vocabulary size)
+                if old_rows != new_rows:
+                    print(f"Resizing rows: {old_rows} -> {new_rows}")
+                    if new_rows > old_rows:
+                        # Expand with zeros
+                        new_tensor = torch.zeros_like(model_state_dict[key])
+                        new_tensor[:old_rows, :] = state_dict[key]
+                        state_dict[key] = new_tensor
+                    else:
+                        # Truncate
+                        state_dict[key] = state_dict[key][:new_rows, :]
+                        
+                    modified = True
+                
+                # If columns differ (embedding dimension)
+                if old_cols != new_cols:
+                    print(f"Resizing columns: {old_cols} -> {new_cols}")
+                    if new_cols > old_cols:
+                        # Expand with zeros
+                        new_tensor = torch.zeros_like(model_state_dict[key])
+                        new_tensor[:, :old_cols] = state_dict[key]
+                        state_dict[key] = new_tensor
+                    else:
+                        # Truncate
+                        state_dict[key] = state_dict[key][:, :new_cols]
+                        
+                    modified = True
+                    
+    if modified:
+        print("Some tensors were resized to match model dimensions")
+    
+    return state_dict
 
-    if fusion_layer_path:
-        fusion_layer_weights = torch.load(fusion_layer_path)
+def load_weights(model, lora_path=None, fusion_layer_path=None):
+    """
+    Load checkpoint weights and adjust them if needed to fit model size
+    """
+    print(f"Loading weights from: {lora_path}")
+    
+    if lora_path is None or not os.path.exists(lora_path):
+        print(f"H-LoRA checkpoint not found: {lora_path}")
+        return model
+    
+    # Get model's state dict to compare shapes
+    model_state_dict = model.state_dict()
+    
+    # Load lora weights
+    lora_weights = torch.load(lora_path, map_location='cpu')
+
+    # Resize weights if shapes don't match
+    lora_weights = resize_checkpoint_tensors(lora_weights, model_state_dict)
+    
+    lora_unexpected_keys = model.load_state_dict(lora_weights, strict=False)[1]
+    print("Unexpected keys in LoRA weights:", lora_unexpected_keys)
+    
+    # Check if we should load fusion layer weights
+    if fusion_layer_path is not None and os.path.exists(fusion_layer_path):
+        print(f"Loading fusion layer weights from: {fusion_layer_path}")
+        fusion_layer_weights = torch.load(fusion_layer_path, map_location='cpu')
+        
+        # Resize fusion layer weights if needed
+        fusion_layer_weights = resize_checkpoint_tensors(fusion_layer_weights, model_state_dict)
+        
         fusion_layer_unexpected_keys = model.load_state_dict(fusion_layer_weights, strict=False)[1]
-        if fusion_layer_unexpected_keys:
-            print(f"Warning: Unexpected keys in fusion_layer checkpoint: {fusion_layer_unexpected_keys}")
-
+        print("Unexpected keys in fusion layer weights:", fusion_layer_unexpected_keys)
+    
     return model
 
