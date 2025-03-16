@@ -1,7 +1,7 @@
 # Medical0
 
 <div align="center">
-<img src="images/M0.png" alt="icon" style="width:50px; vertical-align:middle;" />
+<img src="images/medical0.png" alt="icon" style="width:50px; vertical-align:middle;" />
 
 **A Medical Large Vision-Language Model for Comprehension and Generation**
 </div>
