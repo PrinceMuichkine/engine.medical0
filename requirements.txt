@@ -8,7 +8,7 @@ gradio==3.35.2
 gradio_client==0.2.9
 httpx==0.24.0
 markdown2==2.4.10
-numpy==1.26.0
+numpy==1.26.4
 peft==0.4.0
 scikit-learn==1.2.2
 sentencepiece==0.1.99
@@ -22,5 +22,9 @@ Pygments==2.16.1
 omegaconf
 pytorch_lightning==2.1
 scikit-image
-opencv-python
+opencv-python==4.9.0.80
 lpips
+flask==2.2.5
+flask-cors==4.0.0
+pillow==10.2.0
+requests==2.31.0
